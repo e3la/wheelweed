@@ -487,6 +487,14 @@ function setupDrawers() {
     document.getElementById('queue-filter').addEventListener('change', () => {
         buildQueue();
     });
+
+    // Wheel search option
+    const wheelSearch = document.getElementById('wheel-search');
+    if (wheelSearch) {
+        wheelSearch.addEventListener('input', () => {
+            renderWheel();
+        });
+    }
 }
 
 function renderLeftDrawerToggles() {
@@ -582,13 +590,26 @@ let isWheelScrollingByCode = false;
 function renderWheel() {
     const wheel = document.getElementById('call-number-wheel');
     const sortCol = document.getElementById('queue-sort').value || state.idCol;
-    const qHash = state.queue.join(',') + ':' + sortCol;
+    const searchVal = document.getElementById('wheel-search')?.value.toLowerCase().trim() || '';
+    const decisionsStr = state.queue.map(idx => state.data[idx][state.decCol] || '').join(',');
+    const qHash = state.queue.join(',') + ':' + sortCol + ':' + searchVal + ':' + decisionsStr;
 
     if (currentWheelQueueHash !== qHash) {
         currentWheelQueueHash = qHash;
 
+        const filteredQueueIdxs = [];
+        state.queue.forEach((idx, qIdx) => {
+            const callVal = String(state.data[idx][sortCol] || '').toLowerCase();
+            const titleCol = state.detectedCols?.title || state.columns[0];
+            const titleVal = String(state.data[idx][titleCol] || '').toLowerCase();
+
+            if (!searchVal || callVal.includes(searchVal) || titleVal.includes(searchVal)) {
+                filteredQueueIdxs.push({ idx, qIdx });
+            }
+        });
+
         const pad = `<div style="height: calc(50vh - 120px)"></div>`;
-        wheel.innerHTML = pad + state.queue.map((idx, qIdx) => {
+        wheel.innerHTML = pad + filteredQueueIdxs.map(({ idx, qIdx }) => {
             const dec = state.data[idx][state.decCol];
             let itemStyle = '';
             let colorVal = '';
