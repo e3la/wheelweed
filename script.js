@@ -440,6 +440,12 @@ function populateSelects() {
     callColSelect.innerHTML = `<option value="">(None)</option>` + opts;
     callColSelect.value = settings.callCol || '';
 
+    // Wheel filter column
+    const wheelFilterCol = document.getElementById('wheel-filter-col');
+    if (wheelFilterCol) {
+        wheelFilterCol.innerHTML = `<option value="">Filter Column...</option>` + opts;
+    }
+
     // Default queue-sort to the call column if available, otherwise just use idCol
     if (settings.callCol && cols.includes(settings.callCol)) {
         document.getElementById('queue-sort').value = settings.callCol;
@@ -492,6 +498,18 @@ function setupDrawers() {
     const wheelSearch = document.getElementById('wheel-search');
     if (wheelSearch) {
         wheelSearch.addEventListener('input', () => {
+            renderWheel();
+        });
+    }
+
+    // Wheel custom column value filter
+    const wheelFilterCol = document.getElementById('wheel-filter-col');
+    const wheelFilterVal = document.getElementById('wheel-filter-val');
+    if (wheelFilterCol && wheelFilterVal) {
+        wheelFilterCol.addEventListener('change', () => {
+            renderWheel();
+        });
+        wheelFilterVal.addEventListener('input', () => {
             renderWheel();
         });
     }
@@ -591,8 +609,10 @@ function renderWheel() {
     const wheel = document.getElementById('call-number-wheel');
     const sortCol = document.getElementById('queue-sort').value || state.idCol;
     const searchVal = document.getElementById('wheel-search')?.value.toLowerCase().trim() || '';
+    const filterCol = document.getElementById('wheel-filter-col')?.value || '';
+    const filterVal = document.getElementById('wheel-filter-val')?.value.toLowerCase().trim() || '';
     const decisionsStr = state.queue.map(idx => state.data[idx][state.decCol] || '').join(',');
-    const qHash = state.queue.join(',') + ':' + sortCol + ':' + searchVal + ':' + decisionsStr;
+    const qHash = state.queue.join(',') + ':' + sortCol + ':' + searchVal + ':' + decisionsStr + ':' + filterCol + ':' + filterVal;
 
     if (currentWheelQueueHash !== qHash) {
         currentWheelQueueHash = qHash;
@@ -603,7 +623,14 @@ function renderWheel() {
             const titleCol = state.detectedCols?.title || state.columns[0];
             const titleVal = String(state.data[idx][titleCol] || '').toLowerCase();
 
-            if (!searchVal || callVal.includes(searchVal) || titleVal.includes(searchVal)) {
+            let match = !searchVal || callVal.includes(searchVal) || titleVal.includes(searchVal);
+
+            if (match && filterCol && filterVal) {
+                const cellVal = String(state.data[idx][filterCol] || '').toLowerCase();
+                match = cellVal.includes(filterVal);
+            }
+
+            if (match) {
                 filteredQueueIdxs.push({ idx, qIdx });
             }
         });
