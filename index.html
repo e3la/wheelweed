@@ -258,8 +258,13 @@
                 <button class="btn" id="wiz-btn-gen-id">Or Generate Auto-ID</button>
 
                 <div class="form-group mt-2">
-                    <label>Decision Column Name</label>
-                    <input type="text" id="wiz-dec-col" value="D4Decision">
+                    <label>Weeding Decision Column</label>
+                    <select id="wiz-dec-col-select"></select>
+                </div>
+
+                <div class="form-group mt-2" id="wiz-new-dec-col-container" style="display: none;">
+                    <label>New Decision Column Name</label>
+                    <input type="text" id="wiz-dec-col-input" value="D4Decision">
                 </div>
 
                 <button class="btn primary mt-2" id="wiz-btn-start">Start Triaging</button>
