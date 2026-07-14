@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LC Call Number Triage</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="papaparse.min.js"></script>
+    <script defer src="script.js"></script>
+</head>
+<body>
+    <!-- Bottom Navigation (PWA style) -->
+    <nav class="tabs-nav" id="tabsNav" style="display: none;">
+        <button class="tab-btn active" data-target="swiper-view">Review</button>
+        <button class="tab-btn" data-target="settings-view">Settings & Stats</button>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main id="appContent">
+        <!-- Swiper View -->
+        <section id="swiper-view" class="view active">
+            <!-- Toggles -->
+            <button class="drawer-toggle top-left" id="btn-left-drawer">&gt;&gt;</button>
+            <button class="drawer-toggle top-right" id="btn-right-drawer">&lt;&lt;</button>
+
+            <!-- Drawers -->
+            <div class="drawer left-drawer" id="left-drawer">
+                <h3>Sort Wheel</h3>
+                <div class="wheel-scroll" id="call-number-wheel">
+                    <!-- List of items to scroll & match position -->
+                </div>
+                <button class="drawer-dismiss bottom-left" id="dismiss-left-drawer">◣</button>
+            </div>
+
+            <div class="drawer right-drawer" id="right-drawer">
+                <h3>Card Face Columns</h3>
+                <div class="toggles-list" id="card-col-toggles">
+                    <!-- Populated dynamically -->
+                </div>
+                <button class="drawer-dismiss bottom-right" id="dismiss-right-drawer">◢</button>
+            </div>
+
+            <!-- Swiper Stage -->
+            <div class="swiper-stage" id="swiper-stage">
+                <div class="card-container" id="current-card">
+                    <div class="card-badges">
+                        <div class="badge badge-keep" id="badge-right">Keep</div>
+                        <div class="badge badge-ditch" id="badge-left">Ditch</div>
+                        <div class="badge badge-review" id="badge-up">Review</div>
+                        <div class="badge badge-skip" id="badge-down">Skip</div>
+                    </div>
+                    <div class="card-content" id="card-content">
+                        <!-- Row data mapped here -->
+                    </div>
+                </div>
+                <div class="empty-state" id="swiper-empty" style="display:none;">
+                    <h3>All caught up!</h3>
+                    <p>No rows match the current queue filter.</p>
+                </div>
+            </div>
+            <!-- Keyboard/Button Alternative -->
+            <div class="swiper-controls">
+                <button class="btn btn-ditch" id="btn-swipe-left">Ditch (&larr;)</button>
+                <button class="btn btn-review" id="btn-swipe-up">Review (&uarr;)</button>
+                <button class="btn btn-keep" id="btn-swipe-right">Keep (&rarr;)</button>
+                <button class="btn btn-skip" id="btn-swipe-down">Skip (&darr;)</button>
+            </div>
+        </section>
+
+        <!-- Data Table View -->
+        <section id="table-view" class="view" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Data Table</h2>
+                <button class="btn" onclick="document.querySelector('[data-target=settings-view]').click()">Close Table</button>
+            </div>
+            <div class="table-controls">
+                <input type="text" id="table-search" placeholder="Search across all columns...">
+                <button id="btn-table-export" class="btn primary">Export Current View</button>
+            </div>
+            <div class="table-responsive">
+                <table id="data-table">
+                    <thead><tr id="dt-head"></tr></thead>
+                    <tbody id="dt-body"></tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <button id="dt-prev" class="btn">&larr; Prev</button>
+                <span id="dt-page-info">Page 1 of 1</span>
+                <button id="dt-next" class="btn">Next &rarr;</button>
+            </div>
+        </section>
+
+        <!-- Settings View -->
+        <section id="settings-view" class="view" style="display: none;">
+            <h2>Settings & Dashboard</h2>
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h3>Progress & Stats</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card" style="border-top-color: var(--color-keep);">
+                            <h3 id="lbl-keep-stat">Keep</h3>
+                            <p id="stat-keep">0</p>
+                        </div>
+                        <div class="stat-card" style="border-top-color: var(--color-ditch);">
+                            <h3 id="lbl-ditch-stat">Ditch</h3>
+                            <p id="stat-ditch">0</p>
+                        </div>
+                        <div class="stat-card" style="border-top-color: var(--color-review);">
+                            <h3 id="lbl-review-stat">Review</h3>
+                            <p id="stat-review">0</p>
+                        </div>
+                        <div class="stat-card" style="border-top-color: var(--color-skip);">
+                            <h3 id="lbl-skip-stat">Skip / Undecided</h3>
+                            <p id="stat-skip">0</p>
+                        </div>
+                    </div>
+                    <div class="progress-container" style="margin-top: 1rem;">
+                        <p>Completion: <span id="stat-progress-text">0%</span></p>
+                        <div class="progress-bar"><div id="stat-progress-fill"></div></div>
+                    </div>
+                    <div class="form-group" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button id="btn-export-dashboard" class="btn primary" style="flex: 1;">Export Data</button>
+                        <button class="btn" style="flex: 1;" onclick="document.querySelector('.tab-btn[data-target=table-view]').click()">View Data Table</button>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Decision Labels & Colors</h3>
+                    <div class="form-group">
+                        <label>Right (Keep)</label>
+                        <input type="text" id="set-lbl-right">
+                        <input type="color" id="set-col-right">
+                    </div>
+                    <div class="form-group">
+                        <label>Left (Ditch)</label>
+                        <input type="text" id="set-lbl-left">
+                        <input type="color" id="set-col-left">
+                    </div>
+                    <div class="form-group">
+                        <label>Up (Review)</label>
+                        <input type="text" id="set-lbl-up">
+                        <input type="color" id="set-col-up">
+                    </div>
+                    <div class="form-group">
+                        <label>Down (Skip)</label>
+                        <input type="text" id="set-lbl-down">
+                        <input type="color" id="set-col-down">
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Data Handling</h3>
+                    <div class="form-group">
+                        <label>Decision Column Name</label>
+                        <input type="text" id="set-dec-col" value="D4Decision">
+                    </div>
+                    <div class="form-group">
+                        <label>Call Number Column</label>
+                        <select id="set-call-col"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Queue Sort By</label>
+                        <select id="queue-sort"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Filter Queue</label>
+                        <select id="queue-filter">
+                            <option value="all">All</option>
+                            <option value="undecided">Undecided Only</option>
+                            <option value="decided">Decided Only</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Export Filename Pattern</label>
+                        <input type="text" id="set-export-pattern" value="{original_filename}_{subset_name}_{date}">
+                        <small>Tokens: {original_filename}, {subset_name}, {decision_label}, {date}, {time}, {row_count}</small>
+                        <p class="preview-text">Preview: <span id="set-export-preview"></span></p>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Project File (Local Backup)</h3>
+                    <p style="font-size: 0.875rem; color: var(--color-text-light); margin-bottom: 1rem;">
+                        Save your entire progress to a file to keep it safe from browser data clearing, or to move between devices.
+                    </p>
+                    <div class="form-group">
+                        <button id="btn-export-project" class="btn primary" style="width: 100%;">Download Project File</button>
+                    </div>
+                    <div class="form-group" style="position: relative;">
+                        <input type="file" id="import-project-file" accept=".json" style="position: absolute; left: -9999px;">
+                        <button id="btn-import-project" class="btn" style="width: 100%;" onclick="document.getElementById('import-project-file').click()">Load Project File</button>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Version Snapshots (Browser Storage)</h3>
+                    <div class="form-group">
+                        <input type="text" id="snapshot-name" placeholder="Snapshot Name">
+                        <button class="btn" id="btn-save-snapshot">Save Snapshot</button>
+                    </div>
+                    <ul id="snapshot-list" class="snapshot-list"></ul>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Danger Zone</h3>
+                    <button class="btn btn-ditch" id="btn-reset-app">Clear All Data & Reset</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Import Wizard Modal (Overlay) -->
+    <div id="import-wizard" class="modal active">
+        <div class="modal-content">
+            <h2>Welcome to LC Triage</h2>
+
+            <div id="wizard-step-1" class="wizard-step active">
+                <p>To begin, select a CSV file.</p>
+                <div id="drop-zone" class="drop-zone">
+                    <p>Drag & Drop CSV here</p>
+                    <p>or</p>
+                    <input type="file" id="file-input" accept=".csv" style="display:none;">
+                    <button class="btn primary" onclick="document.getElementById('file-input').click()">Browse File</button>
+                </div>
+            </div>
+
+            <div id="wizard-step-2" class="wizard-step">
+                <h3>Configure Columns</h3>
+                <p>We found <span id="wiz-row-count">0</span> rows.</p>
+
+                <div class="form-group">
+                    <label>Unique ID Column (for tracking)</label>
+                    <select id="wiz-id-col"></select>
+                </div>
+                <button class="btn" id="wiz-btn-gen-id">Or Generate Auto-ID</button>
+
+                <div class="form-group mt-2">
+                    <label>Decision Column Name</label>
+                    <input type="text" id="wiz-dec-col" value="D4Decision">
+                </div>
+
+                <button class="btn primary mt-2" id="wiz-btn-start">Start Triaging</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
