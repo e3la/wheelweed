@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LC Call Number Triage</title>
+    <title>Wheel of the Weed: LC Call Number Triage</title>
     <link rel="stylesheet" href="styles.css">
     <script src="papaparse.min.js"></script>
     <script defer src="script.js"></script>
@@ -50,7 +50,7 @@
                         <div class="badge badge-skip" id="badge-down">Skip</div>
                     </div>
                     <div class="card-content" id="card-content">
-                        <!-- Row data mapped here -->
+                        <!-- Row data mapped here with headers and tabs -->
                     </div>
                 </div>
                 <div class="empty-state" id="swiper-empty" style="display:none;">
@@ -92,7 +92,7 @@
 
         <!-- Settings View -->
         <section id="settings-view" class="view" style="display: none;">
-            <h2>Settings & Dashboard</h2>
+            <h2>Wheel of the Weed Settings & Dashboard</h2>
             <div class="settings-grid">
                 <div class="settings-card">
                     <h3>Progress & Stats</h3>
@@ -121,6 +121,18 @@
                     <div class="form-group" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
                         <button id="btn-export-dashboard" class="btn primary" style="flex: 1;">Export Data</button>
                         <button class="btn" style="flex: 1;" onclick="document.querySelector('.tab-btn[data-target=table-view]').click()">View Data Table</button>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Visual Theme</h3>
+                    <div class="form-group">
+                        <label>Select Theme</label>
+                        <select id="set-theme">
+                            <option value="weed">Wheel of the Weed (Earthy Green)</option>
+                            <option value="light">Classic Blue (Light)</option>
+                            <option value="dark">Dark Mode</option>
+                        </select>
                     </div>
                 </div>
 
@@ -212,10 +224,11 @@
     <!-- Import Wizard Modal (Overlay) -->
     <div id="import-wizard" class="modal active">
         <div class="modal-content">
-            <h2>Welcome to LC Triage</h2>
+            <h2 class="app-brand-title">Wheel of the Weed</h2>
+            <div class="app-brand-subtitle">LC Call Number Triage & Weeding System</div>
 
             <div id="wizard-step-1" class="wizard-step active">
-                <p>To begin, select a CSV file.</p>
+                <p style="text-align: center; margin-bottom: 1rem; color: var(--color-text-light);">To begin, select a CSV file.</p>
                 <div id="drop-zone" class="drop-zone">
                     <p>Drag & Drop CSV here</p>
                     <p>or</p>

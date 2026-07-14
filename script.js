@@ -11,14 +11,23 @@ let state = {
     visibleCols: {},
     originalFilename: 'dataset',
     tablePage: 1,
-    tableRowsPerPage: 50
+    tableRowsPerPage: 50,
+    detectedCols: {
+        title: '',
+        author: '',
+        call: '',
+        circ: [],
+        meta: []
+    },
+    activeCardTab: 'circ'
 };
 
 let settings = {
     labels: { right: 'Keep', left: 'Ditch', up: 'Review', down: 'Skip' },
     colors: { right: '#22c55e', left: '#ef4444', up: '#eab308', down: '#94a3b8' },
     exportPattern: '{original_filename}_{subset_name}_{date}',
-    callCol: ''
+    callCol: '',
+    theme: 'weed'
 };
 
 // LC Call Number Logic
@@ -64,7 +73,7 @@ function compareLC(a, b) {
     return 0;
 }
 
-// Storage (IndexedDB)
+// IndexedDB Helper
 const DB_NAME = 'LCTriageDB';
 const DB_VER = 1;
 const STORE_NAME = 'triageStore';
@@ -191,6 +200,13 @@ function applySettings() {
 
     document.getElementById('set-dec-col').value = state.decCol;
     document.getElementById('set-export-pattern').value = settings.exportPattern;
+
+    // Apply visual theme
+    const activeTheme = settings.theme || 'weed';
+    document.body.className = '';
+    document.body.classList.add('theme-' + activeTheme);
+    document.getElementById('set-theme').value = activeTheme;
+
     updateExportPreview();
 }
 
@@ -204,6 +220,9 @@ const badgeDown = document.getElementById('badge-down');
 // Init
 window.addEventListener('DOMContentLoaded', async () => {
     await loadData();
+    if (state.data.length > 0) {
+        detectColumns();
+    }
     setupTabs();
     setupWizard();
     setupSwiper();
@@ -243,18 +262,88 @@ function setupTabs() {
     });
 }
 
+// Smart Column Auto-Detection
+function detectColumns() {
+    if (!state.columns || state.columns.length === 0) return;
+
+    state.detectedCols = {
+        title: '',
+        author: '',
+        call: '',
+        circ: [],
+        meta: []
+    };
+
+    const titleGuesses = ['title', 'book title', 'book_title', 'main title', 'item title', 'name', 'desc', 'description'];
+    const authorGuesses = ['author', 'creator', 'main author', 'book author', 'item author', 'contributors', 'personal name'];
+    const callGuesses = ['call #', 'call number', 'call_number', 'callno', 'call', 'lc call', 'lc call #', 'lc_call', 'classification'];
+    const circGuesses = [
+        'checkout', 'charge', 'loan', 'renewal', 'circ', 'internal use',
+        'in-house', 'in house', 'use count', 'browse', 'activity', 'usage'
+    ];
+
+    state.columns.forEach(c => {
+        const lower = c.toLowerCase();
+
+        // Skip decision column from being treated as regular metadata or circ
+        if (lower === state.decCol.toLowerCase()) return;
+
+        // Auto detect Call Number column if not already set or guessed
+        if (!state.detectedCols.call && callGuesses.some(g => lower === g || lower.includes(g))) {
+            state.detectedCols.call = c;
+            if (!settings.callCol) {
+                settings.callCol = c;
+            }
+        }
+        // Auto detect Title
+        else if (!state.detectedCols.title && titleGuesses.some(g => lower === g || lower.includes(g))) {
+            state.detectedCols.title = c;
+        }
+        // Auto detect Author
+        else if (!state.detectedCols.author && authorGuesses.some(g => lower === g || lower.includes(g))) {
+            state.detectedCols.author = c;
+        }
+        // Auto detect Circulation columns
+        else if (circGuesses.some(g => lower.includes(g))) {
+            state.detectedCols.circ.push(c);
+        }
+        // Rest goes to metadata
+        else {
+            state.detectedCols.meta.push(c);
+        }
+    });
+
+    // Fallbacks if not detected
+    if (!state.detectedCols.title && state.columns.length > 0) {
+        state.detectedCols.title = state.columns[0];
+    }
+    if (!state.detectedCols.author && state.columns.length > 1) {
+        state.detectedCols.author = state.columns[1];
+    }
+
+    // Build meta and circ lists ensuring we don't duplicate title/author/call column
+    const specialCols = [state.detectedCols.title, state.detectedCols.author, settings.callCol || state.detectedCols.call].filter(Boolean);
+
+    state.detectedCols.circ = state.detectedCols.circ.filter(c => !specialCols.includes(c));
+
+    state.detectedCols.meta = state.columns.filter(c => {
+        return !specialCols.includes(c) && !state.detectedCols.circ.includes(c) && c !== state.decCol;
+    });
+}
+
 // CSV Wizard
 function setupWizard() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
 
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', e => {
-        e.preventDefault(); dropZone.classList.remove('dragover');
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
         if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
     });
-    fileInput.addEventListener('change', e => {
+    fileInput.addEventListener('change', (e) => {
         if (e.target.files.length) handleFile(e.target.files[0]);
     });
 
@@ -274,6 +363,8 @@ function setupWizard() {
             state.data.forEach(row => row[state.decCol] = '');
         }
         state.columns.forEach(c => state.visibleCols[c] = true); // All visible by default
+
+        detectColumns();
         saveData();
         document.getElementById('import-wizard').classList.remove('active');
         document.getElementById('tabsNav').style.display = 'flex';
@@ -399,53 +490,55 @@ function setupDrawers() {
 }
 
 function renderLeftDrawerToggles() {
-    const cont = document.getElementById('card-col-toggles');
-    cont.innerHTML = state.columns.map((c, i) => `
-        <label class="toggle-item" draggable="true" data-index="${i}">
-            <input type="checkbox" ${state.visibleCols[c] ? 'checked' : ''} data-col="${c}">
-            <span class="drag-handle">☰</span>
-            ${c}
-        </label>
-    `).join('');
+    const container = document.getElementById('card-col-toggles');
+    container.innerHTML = state.columns.map(c => {
+        if (c === state.idCol || c === state.decCol) return ''; // Hide core IDs/Decisions from general toggles
+        return `
+            <div class="toggle-item" draggable="true" data-col="${c}">
+                <span class="drag-handle">☰</span>
+                <input type="checkbox" id="chk-col-${c}" ${state.visibleCols[c]?'checked':''}>
+                <label for="chk-col-${c}">${c}</label>
+            </div>
+        `;
+    }).join('');
 
-    cont.querySelectorAll('input').forEach(chk => {
-        chk.addEventListener('change', (e) => {
-            state.visibleCols[e.target.dataset.col] = e.target.checked;
+    container.querySelectorAll('input[type=checkbox]').forEach(chk => {
+        chk.onchange = (e) => {
+            const col = e.target.id.replace('chk-col-', '');
+            state.visibleCols[col] = e.target.checked;
             saveData();
             renderCard();
-        });
+        };
     });
 
-    let draggedIdx = null;
-    cont.querySelectorAll('.toggle-item').forEach(item => {
-        item.addEventListener('dragstart', e => {
-            draggedIdx = +e.currentTarget.dataset.index;
-            e.currentTarget.style.opacity = '0.5';
-            e.dataTransfer.effectAllowed = 'move';
-        });
-        item.addEventListener('dragover', e => {
+    // Simple Drag & Drop sorting for columns list
+    let dragEl = null;
+    container.querySelectorAll('.toggle-item').forEach(item => {
+        item.addEventListener('dragstart', (e) => { dragEl = e.currentTarget; e.dataTransfer.effectAllowed = 'move'; });
+        item.addEventListener('dragover', (e) => { e.preventDefault(); });
+        item.addEventListener('drop', (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-        });
-        item.addEventListener('drop', e => {
-            e.preventDefault();
-            const targetIdx = +e.currentTarget.dataset.index;
-            if (draggedIdx !== null && draggedIdx !== targetIdx) {
-                const colToMove = state.columns.splice(draggedIdx, 1)[0];
-                state.columns.splice(targetIdx, 0, colToMove);
+            const target = e.currentTarget;
+            if(dragEl && target !== dragEl) {
+                // Reorder in state
+                const colDrag = dragEl.dataset.col;
+                const colTarget = target.dataset.col;
+                const idxDrag = state.columns.indexOf(colDrag);
+                const idxTarget = state.columns.indexOf(colTarget);
+
+                state.columns.splice(idxDrag, 1);
+                state.columns.splice(idxTarget, 0, colDrag);
+
                 saveData();
                 renderLeftDrawerToggles();
                 renderCard();
                 renderTable();
             }
         });
-        item.addEventListener('dragend', e => {
-            e.currentTarget.style.opacity = '1';
-        });
     });
 }
 
-// Queue & Wheel
+// Queue Building
 function buildQueue() {
     const filter = document.getElementById('queue-filter').value;
     const sortCol = document.getElementById('queue-sort').value;
@@ -459,25 +552,29 @@ function buildQueue() {
         q.push(idx);
     });
 
+    // Sorting
     if (sortCol) {
-        if (sortCol === settings.callCol) {
-            q.sort((a, b) => compareLC(state.data[a][sortCol], state.data[b][sortCol]));
-        } else {
-            q.sort((a, b) => {
-                const va = state.data[a][sortCol] || '';
-                const vb = state.data[b][sortCol] || '';
-                return String(va).localeCompare(String(vb), undefined, {numeric: true});
-            });
-        }
+        q.sort((idxA, idxB) => {
+            const valA = state.data[idxA][sortCol] || '';
+            const valB = state.data[idxB][sortCol] || '';
+
+            if (sortCol === settings.callCol) {
+                return compareLC(valA, valB);
+            }
+
+            // Standard alphanumeric sort
+            return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+        });
     }
 
     state.queue = q;
-    state.currentIndex = 0;
-    renderLeftDrawerToggles();
+    state.currentIndex = 0; // reset
     renderCard();
     renderWheel();
+    renderLeftDrawerToggles();
 }
 
+// Scroll Wheel
 let currentWheelQueueHash = '';
 let wheelScrollTimeout = null;
 let isWheelScrollingByCode = false;
@@ -490,15 +587,26 @@ function renderWheel() {
     if (currentWheelQueueHash !== qHash) {
         currentWheelQueueHash = qHash;
 
-        // Remove old event listener by replacing node if necessary, but here we can just clear innerHTML and add new event listener safely if we just bind it once or use a named function.
-        // Better: wheel.onscroll = ...
-
         const pad = `<div style="height: calc(50vh - 120px)"></div>`;
-        wheel.innerHTML = pad + state.queue.map((idx, qIdx) => `
-            <div class="wheel-item" data-qidx="${qIdx}">
-                ${state.data[idx][sortCol] || '<em>Blank</em>'}
-            </div>
-        `).join('') + pad;
+        wheel.innerHTML = pad + state.queue.map((idx, qIdx) => {
+            const dec = state.data[idx][state.decCol];
+            let itemStyle = '';
+            let colorVal = '';
+            if (dec === 'keep') colorVal = settings.colors.right;
+            else if (dec === 'ditch') colorVal = settings.colors.left;
+            else if (dec === 'review') colorVal = settings.colors.up;
+            else if (dec === 'skip') colorVal = settings.colors.down;
+
+            if (colorVal) {
+                itemStyle = `color: ${colorVal}; border-left: 4px solid ${colorVal}; padding-left: 12px;`;
+            }
+
+            return `
+                <div class="wheel-item" data-qidx="${qIdx}" style="${itemStyle}">
+                    ${state.data[idx][sortCol] || '<em>Blank</em>'}
+                </div>
+            `;
+        }).join('') + pad;
 
         wheel.querySelectorAll('.wheel-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -593,6 +701,12 @@ let swipeIntent = null; // 'horizontal', 'vertical', or 'scroll'
 
 function handleDragStart(e) {
     if (state.currentIndex >= state.queue.length) return;
+
+    // Swipe interaction safety: ignore drags initiating from tab buttons or tab headers
+    if (e.target.closest('.card-tabs-header') || e.target.closest('.card-tab-btn')) {
+        return;
+    }
+
     isDragging = true;
     swipeIntent = null;
     cardContainer.classList.remove('animating');
@@ -612,10 +726,10 @@ function handleDragMove(e) {
             if (Math.abs(currentX) > Math.abs(currentY)) {
                 swipeIntent = 'horizontal';
             } else {
-                const content = document.getElementById('card-content');
-                if (content.contains(e.target) && content.scrollHeight > content.clientHeight) {
-                    const isAtTop = content.scrollTop === 0;
-                    const isAtBottom = content.scrollTop + content.clientHeight >= content.scrollHeight - 1;
+                const listEl = document.querySelector('.card-fields-list');
+                if (listEl && listEl.contains(e.target) && listEl.scrollHeight > listEl.clientHeight) {
+                    const isAtTop = listEl.scrollTop === 0;
+                    const isAtBottom = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 1;
                     if ((isAtTop && currentY > 0) || (isAtBottom && currentY < 0)) {
                         swipeIntent = 'vertical';
                     } else {
@@ -646,32 +760,52 @@ function handleDragMove(e) {
 function handleDragEnd() {
     if (!isDragging) return;
     isDragging = false;
+
+    if (swipeIntent === 'scroll') {
+        swipeIntent = null;
+        return;
+    }
+
     cardContainer.classList.add('animating');
 
-    const THRESH = 100;
-    if (currentX > THRESH) swipeCard('right');
-    else if (currentX < -THRESH) swipeCard('left');
-    else if (currentY < -THRESH) swipeCard('up');
-    else if (currentY > THRESH) swipeCard('down');
-    else {
-        // Snap back
+    // Threshold check
+    if (swipeIntent === 'horizontal') {
+        if (currentX > 100) {
+            swipeCard('right');
+        } else if (currentX < -100) {
+            swipeCard('left');
+        } else {
+            cardContainer.style.transform = '';
+            resetBadges();
+        }
+    } else if (swipeIntent === 'vertical') {
+        if (currentY < -100) {
+            swipeCard('up');
+        } else if (currentY > 100) {
+            swipeCard('down');
+        } else {
+            cardContainer.style.transform = '';
+            resetBadges();
+        }
+    } else {
         cardContainer.style.transform = '';
         resetBadges();
     }
-    currentX = 0; currentY = 0;
+
+    swipeIntent = null;
 }
 
 function swipeCard(direction) {
     if (state.currentIndex >= state.queue.length) return;
-
     const idx = state.queue[state.currentIndex];
 
-    // Visual exit
-    const exitX = direction === 'right' ? 1000 : direction === 'left' ? -1000 : 0;
-    const exitY = direction === 'down' ? 1000 : direction === 'up' ? -1000 : 0;
-    cardContainer.style.transform = `translate(${exitX}px, ${exitY}px) rotate(${exitX*0.05}deg)`;
+    // Visual fly-away animation
+    cardContainer.classList.add('animating');
+    if (direction === 'right') cardContainer.style.transform = 'translate(600px, 0) rotate(30deg)';
+    else if (direction === 'left') cardContainer.style.transform = 'translate(-600px, 0) rotate(-30deg)';
+    else if (direction === 'up') cardContainer.style.transform = 'translate(0, -600px)';
+    else if (direction === 'down') cardContainer.style.transform = 'translate(0, 600px)';
 
-    // Record decision
     let decVal = '';
     if (direction === 'right') decVal = 'keep';
     else if (direction === 'left') decVal = 'ditch';
@@ -703,6 +837,11 @@ function resetBadges() {
     badgeDown.style.opacity = 0;
 }
 
+window.switchCardTab = function(tabName) {
+    state.activeCardTab = tabName;
+    renderCard();
+};
+
 function renderCard() {
     if (state.currentIndex >= state.queue.length) {
         cardContainer.style.display = 'none';
@@ -715,15 +854,60 @@ function renderCard() {
     const row = state.data[state.queue[state.currentIndex]];
     const content = document.getElementById('card-content');
 
-    let html = '';
-    state.columns.forEach(c => {
-        if (state.visibleCols[c]) {
-            html += `<div class="card-field">
-                <div class="card-field-label">${c}</div>
-                <div class="card-field-val">${row[c] || ''}</div>
-            </div>`;
+    // Prominent book headers
+    const titleCol = state.detectedCols?.title || state.columns[0];
+    const authorCol = state.detectedCols?.author || state.columns[1];
+    const callCol = settings.callCol || state.detectedCols?.call;
+
+    const titleVal = row[titleCol] || 'Unknown Title';
+    const authorVal = row[authorCol] || 'Unknown Author';
+    const callVal = row[callCol] || '';
+
+    // Layout of the card: Hero header + tab switcher + fields list
+    let html = `
+        <div class="card-hero">
+            <div class="card-hero-title">${titleVal}</div>
+            <div class="card-hero-author">${authorVal !== 'Unknown Author' ? 'by ' + authorVal : ''}</div>
+            ${callVal ? `<div class="card-hero-call"><span class="hero-call-badge">${callVal}</span></div>` : ''}
+        </div>
+        <div class="card-tabs-header">
+            <button class="card-tab-btn ${state.activeCardTab === 'circ' ? 'active' : ''}" onclick="switchCardTab('circ')">Circulation</button>
+            <button class="card-tab-btn ${state.activeCardTab === 'meta' ? 'active' : ''}" onclick="switchCardTab('meta')">Metadata</button>
+        </div>
+        <div class="card-fields-list">
+    `;
+
+    if (state.activeCardTab === 'circ') {
+        const circCols = (state.detectedCols?.circ || []).filter(c => state.visibleCols[c]);
+        if (circCols.length === 0) {
+            html += `<div class="empty-tab-msg">No circulation metrics detected or visible.</div>`;
+        } else {
+            circCols.forEach(c => {
+                html += `
+                    <div class="card-field">
+                        <div class="card-field-label">${c}</div>
+                        <div class="card-field-val">${row[c] || '0'}</div>
+                    </div>
+                `;
+            });
         }
-    });
+    } else {
+        const metaCols = (state.detectedCols?.meta || []).filter(c => state.visibleCols[c]);
+        if (metaCols.length === 0) {
+            html += `<div class="empty-tab-msg">No additional metadata fields visible.</div>`;
+        } else {
+            metaCols.forEach(c => {
+                html += `
+                    <div class="card-field">
+                        <div class="card-field-label">${c}</div>
+                        <div class="card-field-val">${row[c] || ''}</div>
+                    </div>
+                `;
+            });
+        }
+    }
+
+    html += `</div>`;
     content.innerHTML = html;
 }
 
@@ -738,9 +922,11 @@ function setupFilters() {
         const q = document.getElementById('table-search').value.toLowerCase();
         let exportData = state.data;
         if(q) {
-            exportData = state.data.filter(row => state.columns.some(c => (row[c]||'').toLowerCase().includes(q)));
+            exportData = state.data.filter(row => {
+                return state.columns.some(c => String(row[c] || '').toLowerCase().includes(q));
+            });
         }
-        doExport('TableView', exportData);
+        doExport('Filtered_Table', exportData);
     };
 }
 
@@ -748,15 +934,19 @@ function renderTable() {
     const q = document.getElementById('table-search').value.toLowerCase();
     let filtered = state.data;
     if (q) {
-        filtered = state.data.filter(row =>
-            state.columns.some(c => (row[c] || '').toLowerCase().includes(q))
-        );
+        filtered = state.data.filter(row => {
+            return state.columns.some(c => String(row[c] || '').toLowerCase().includes(q));
+        });
     }
+
+    const totalRows = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / state.tableRowsPerPage));
+    if (state.tablePage > totalPages) state.tablePage = totalPages;
 
     const start = (state.tablePage - 1) * state.tableRowsPerPage;
     const paginated = filtered.slice(start, start + state.tableRowsPerPage);
 
-    document.getElementById('dt-page-info').textContent = `Page ${state.tablePage} of ${Math.ceil(filtered.length / state.tableRowsPerPage) || 1}`;
+    document.getElementById('dt-page-info').textContent = `Page ${state.tablePage} of ${totalPages} (Total: ${totalRows})`;
 
     const thead = document.getElementById('dt-head');
     thead.innerHTML = `<th>Actions</th>` + state.columns.map(c => `<th>${c}</th>`).join('');
@@ -775,7 +965,7 @@ function renderTable() {
 
         return `<tr>
             <td>${decHtml}</td>
-            ${state.columns.map(c => `<td>${row[c] || ''}</td>`).join('')}
+            ${state.columns.map(c => `<td>${row[c] !== undefined ? row[c] : ''}</td>`).join('')}
         </tr>`;
     }).join('');
 }
@@ -831,6 +1021,13 @@ function setupSettings() {
         updateExportPreview();
     });
 
+    // Theme selector
+    document.getElementById('set-theme').addEventListener('change', e => {
+        settings.theme = e.target.value;
+        saveData();
+        applySettings();
+    });
+
     document.getElementById('btn-reset-app').onclick = async () => {
         if(confirm('Are you sure you want to delete all local data? This cannot be undone.')) {
             await idbClear();
@@ -878,9 +1075,8 @@ function setupSettings() {
                 } else {
                     alert('Invalid project file structure.');
                 }
-            } catch (err) {
-                alert('Error parsing project file.');
-                console.error(err);
+            } catch(ex) {
+                alert('Failed to parse file: ' + ex.message);
             }
         };
         reader.readAsText(file);
@@ -888,50 +1084,31 @@ function setupSettings() {
 }
 
 function updateExportPreview() {
-    const p = settings.exportPattern;
+    const pat = settings.exportPattern;
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g,'-');
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
 
-    let res = p.replace('{original_filename}', state.originalFilename)
-               .replace('{subset_name}', 'Full')
-               .replace('{decision_label}', 'All')
-               .replace('{date}', dateStr)
-               .replace('{time}', timeStr)
-               .replace('{row_count}', state.data.length);
-    document.getElementById('set-export-preview').textContent = res + '.csv';
-}
+    let out = pat
+        .replace('{original_filename}', state.originalFilename || 'dataset')
+        .replace('{subset_name}', 'Keep')
+        .replace('{decision_label}', 'Keep')
+        .replace('{date}', dateStr)
+        .replace('{time}', timeStr)
+        .replace('{row_count}', '123');
 
-function doExport(subsetName, dataArr) {
-    const csv = Papa.unparse(dataArr);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-
-    const now = new Date();
-    let filename = settings.exportPattern
-               .replace('{original_filename}', state.originalFilename)
-               .replace('{subset_name}', subsetName)
-               .replace('{decision_label}', 'Export')
-               .replace('{date}', now.toISOString().split('T')[0])
-               .replace('{time}', now.toTimeString().split(' ')[0].replace(/:/g,'-'))
-               .replace('{row_count}', dataArr.length) + '.csv';
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    document.getElementById('set-export-preview').textContent = out + '.csv';
 }
 
 async function populateSnapshots() {
+    const list = document.getElementById('snapshot-list');
     const snaps = await idbGet(VER + 'snapshots') || {};
-    const ul = document.getElementById('snapshot-list');
-    ul.innerHTML = Object.keys(snaps).map(k => `
+    list.innerHTML = Object.keys(snaps).map(k => `
         <li>
             <span>${k}</span>
-            <div>
-                <button class="btn" onclick="loadSnapshot('${k}')">Load</button>
-                <button class="btn btn-ditch" onclick="deleteSnapshot('${k}')">Del</button>
+            <div style="display:flex; gap:0.25rem;">
+                <button class="btn" style="padding:0.25rem 0.5rem;" onclick="loadSnapshot('${k}')">Load</button>
+                <button class="btn btn-ditch" style="padding:0.25rem 0.5rem;" onclick="deleteSnapshot('${k}')">Del</button>
             </div>
         </li>
     `).join('');
@@ -956,4 +1133,31 @@ window.deleteSnapshot = async function(k) {
         await idbSet(VER + 'snapshots', snaps);
         populateSnapshots();
     }
+}
+
+function doExport(subsetName, dataArr) {
+    const pat = settings.exportPattern;
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+
+    let filename = pat
+        .replace('{original_filename}', state.originalFilename || 'dataset')
+        .replace('{subset_name}', subsetName)
+        .replace('{decision_label}', subsetName)
+        .replace('{date}', dateStr)
+        .replace('{time}', timeStr)
+        .replace('{row_count}', dataArr.length) + '.csv';
+
+    // Generate CSV
+    const csv = Papa.unparse(dataArr);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
