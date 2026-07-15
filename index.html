@@ -66,6 +66,7 @@
                 <div class="empty-state" id="swiper-empty" style="display:none;">
                     <h3>All caught up!</h3>
                     <p>No rows match the current queue filter.</p>
+                    <button class="btn primary" onclick="openCSVWizard()" style="margin-top: 1rem;">Upload / Import New CSV</button>
                 </div>
             </div>
             <!-- Keyboard/Button Alternative -->
@@ -172,6 +173,9 @@
 
                 <div class="settings-card">
                     <h3>Data Handling</h3>
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <button class="btn primary" onclick="openCSVWizard()" style="width: 100%;">Upload / Import New CSV</button>
+                    </div>
                     <div class="form-group">
                         <label>Decision Column Name</label>
                         <input type="text" id="set-dec-col" value="D4Decision">

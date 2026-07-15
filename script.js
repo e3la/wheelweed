@@ -217,6 +217,14 @@ const badgeLeft = document.getElementById('badge-left');
 const badgeUp = document.getElementById('badge-up');
 const badgeDown = document.getElementById('badge-down');
 
+window.openCSVWizard = function() {
+    // Show step 1 of wizard, reset file input
+    document.getElementById('file-input').value = '';
+    document.getElementById('wizard-step-1').classList.add('active');
+    document.getElementById('wizard-step-2').classList.remove('active');
+    document.getElementById('import-wizard').classList.add('active');
+};
+
 // Init
 window.addEventListener('DOMContentLoaded', async () => {
     await loadData();
@@ -239,6 +247,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function refreshApp() {
+    applySettings();
     updateDashboard();
     populateSelects();
     buildQueue();
@@ -483,8 +492,8 @@ function handleFile(file) {
                 }
             }
 
-            let decOptions = cols.map(c => `<option value="${c}" ${c === guessedDecCol ? 'selected' : ''}>${c}</option>`).join('');
-            decOptions += `<option value="__new__" ${!guessedDecCol ? 'selected' : ''}>[Create New Column]</option>`;
+            let decOptions = `<option value="__new__" ${!guessedDecCol ? 'selected' : ''}>[Create New Column]</option>`;
+            decOptions += cols.map(c => `<option value="${c}" ${c === guessedDecCol ? 'selected' : ''}>Use Existing: ${c}</option>`).join('');
             decColSelect.innerHTML = decOptions;
 
             const newDecColContainer = document.getElementById('wiz-new-dec-col-container');
