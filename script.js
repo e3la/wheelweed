@@ -217,6 +217,14 @@ const badgeLeft = document.getElementById('badge-left');
 const badgeUp = document.getElementById('badge-up');
 const badgeDown = document.getElementById('badge-down');
 
+window.openCSVWizard = function() {
+    // Show step 1 of wizard, reset file input
+    document.getElementById('file-input').value = '';
+    document.getElementById('wizard-step-1').classList.add('active');
+    document.getElementById('wizard-step-2').classList.remove('active');
+    document.getElementById('import-wizard').classList.add('active');
+};
+
 // Init
 window.addEventListener('DOMContentLoaded', async () => {
     await loadData();
@@ -239,6 +247,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function refreshApp() {
+    applySettings();
     updateDashboard();
     populateSelects();
     buildQueue();
@@ -355,13 +364,49 @@ function setupWizard() {
         document.getElementById('wiz-id-col').innerHTML = `<option value="${idCol}">${idCol}</option>`;
     });
 
+    const decColSelect = document.getElementById('wiz-dec-col-select');
+    const newDecColContainer = document.getElementById('wiz-new-dec-col-container');
+
+    decColSelect.addEventListener('change', () => {
+        if (decColSelect.value === '__new__') {
+            newDecColContainer.style.display = 'block';
+        } else {
+            newDecColContainer.style.display = 'none';
+        }
+    });
+
     document.getElementById('wiz-btn-start').addEventListener('click', () => {
         state.idCol = document.getElementById('wiz-id-col').value;
-        state.decCol = document.getElementById('wiz-dec-col').value;
+
+        const selVal = decColSelect.value;
+        let isExistingDecCol = false;
+        if (selVal === '__new__') {
+            state.decCol = document.getElementById('wiz-dec-col-input').value.trim() || 'D4Decision';
+        } else {
+            state.decCol = selVal;
+            isExistingDecCol = true;
+        }
+
         if (!state.columns.includes(state.decCol)) {
             state.columns.push(state.decCol);
             state.data.forEach(row => row[state.decCol] = '');
+        } else if (isExistingDecCol) {
+            // Translate existing 'Y'/'N' values: ditch to default to Y, keep to default to N.
+            // Also accept lower case and full words, but strictly map 'Y' to 'ditch' and 'N' to 'keep'.
+            state.data.forEach(row => {
+                const val = String(row[state.decCol] || '').trim().toUpperCase();
+                if (val === 'Y' || val === 'YES' || val === 'DITCH') {
+                    row[state.decCol] = 'ditch';
+                } else if (val === 'N' || val === 'NO' || val === 'KEEP') {
+                    row[state.decCol] = 'keep';
+                } else if (val === 'REVIEW') {
+                    row[state.decCol] = 'review';
+                } else if (val === 'SKIP') {
+                    row[state.decCol] = 'skip';
+                }
+            });
         }
+
         state.columns.forEach(c => state.visibleCols[c] = true); // All visible by default
 
         detectColumns();
@@ -419,8 +464,44 @@ function handleFile(file) {
             }
 
             document.getElementById('wiz-row-count').textContent = state.data.length;
+
             const sel = document.getElementById('wiz-id-col');
             sel.innerHTML = cols.map(c => `<option value="${c}">${c}</option>`).join('');
+
+            // Guess ID column
+            const idGuesses = ['id', 'barcode', 'system-id', 'control number', 'controlno', 'rowid', 'row-id', 'unique-id'];
+            let foundIdCol = cols[0] || '';
+            for (let c of cols) {
+                if (idGuesses.includes(c.toLowerCase())) {
+                    foundIdCol = c;
+                    break;
+                }
+            }
+            sel.value = foundIdCol;
+
+            const decColSelect = document.getElementById('wiz-dec-col-select');
+
+            // Populating decision select. Let's see if there are any guesses like 'decision', 'weeding', 'status', 'keep/ditch', etc.
+            const decGuesses = ['decision', 'weeding', 'status', 'triage', 'keep/ditch', 'd4decision', 'weed'];
+            let guessedDecCol = '';
+            for (let c of cols) {
+                const lower = c.toLowerCase();
+                if (decGuesses.some(g => lower.includes(g))) {
+                    guessedDecCol = c;
+                    break;
+                }
+            }
+
+            let decOptions = `<option value="__new__" ${!guessedDecCol ? 'selected' : ''}>[Create New Column]</option>`;
+            decOptions += cols.map(c => `<option value="${c}" ${c === guessedDecCol ? 'selected' : ''}>Use Existing: ${c}</option>`).join('');
+            decColSelect.innerHTML = decOptions;
+
+            const newDecColContainer = document.getElementById('wiz-new-dec-col-container');
+            if (guessedDecCol) {
+                newDecColContainer.style.display = 'none';
+            } else {
+                newDecColContainer.style.display = 'block';
+            }
 
             document.getElementById('wizard-step-1').classList.remove('active');
             document.getElementById('wizard-step-2').classList.add('active');
@@ -439,6 +520,12 @@ function populateSelects() {
     const callColSelect = document.getElementById('set-call-col');
     callColSelect.innerHTML = `<option value="">(None)</option>` + opts;
     callColSelect.value = settings.callCol || '';
+
+    // Wheel filter column
+    const wheelFilterCol = document.getElementById('wheel-filter-col');
+    if (wheelFilterCol) {
+        wheelFilterCol.innerHTML = `<option value="">Filter Column...</option>` + opts;
+    }
 
     // Default queue-sort to the call column if available, otherwise just use idCol
     if (settings.callCol && cols.includes(settings.callCol)) {
@@ -492,6 +579,18 @@ function setupDrawers() {
     const wheelSearch = document.getElementById('wheel-search');
     if (wheelSearch) {
         wheelSearch.addEventListener('input', () => {
+            renderWheel();
+        });
+    }
+
+    // Wheel custom column value filter
+    const wheelFilterCol = document.getElementById('wheel-filter-col');
+    const wheelFilterVal = document.getElementById('wheel-filter-val');
+    if (wheelFilterCol && wheelFilterVal) {
+        wheelFilterCol.addEventListener('change', () => {
+            renderWheel();
+        });
+        wheelFilterVal.addEventListener('input', () => {
             renderWheel();
         });
     }
@@ -591,8 +690,10 @@ function renderWheel() {
     const wheel = document.getElementById('call-number-wheel');
     const sortCol = document.getElementById('queue-sort').value || state.idCol;
     const searchVal = document.getElementById('wheel-search')?.value.toLowerCase().trim() || '';
+    const filterCol = document.getElementById('wheel-filter-col')?.value || '';
+    const filterVal = document.getElementById('wheel-filter-val')?.value.toLowerCase().trim() || '';
     const decisionsStr = state.queue.map(idx => state.data[idx][state.decCol] || '').join(',');
-    const qHash = state.queue.join(',') + ':' + sortCol + ':' + searchVal + ':' + decisionsStr;
+    const qHash = state.queue.join(',') + ':' + sortCol + ':' + searchVal + ':' + decisionsStr + ':' + filterCol + ':' + filterVal;
 
     if (currentWheelQueueHash !== qHash) {
         currentWheelQueueHash = qHash;
@@ -603,7 +704,14 @@ function renderWheel() {
             const titleCol = state.detectedCols?.title || state.columns[0];
             const titleVal = String(state.data[idx][titleCol] || '').toLowerCase();
 
-            if (!searchVal || callVal.includes(searchVal) || titleVal.includes(searchVal)) {
+            let match = !searchVal || callVal.includes(searchVal) || titleVal.includes(searchVal);
+
+            if (match && filterCol && filterVal) {
+                const cellVal = String(state.data[idx][filterCol] || '').toLowerCase();
+                match = cellVal.includes(filterVal);
+            }
+
+            if (match) {
                 filteredQueueIdxs.push({ idx, qIdx });
             }
         });
@@ -1170,8 +1278,27 @@ function doExport(subsetName, dataArr) {
         .replace('{time}', timeStr)
         .replace('{row_count}', dataArr.length) + '.csv';
 
+    // If a weeding decision column was mapped (e.g. state.decCol exists in the data),
+    // we translate 'keep' to 'N', 'ditch' to 'Y', 'review' to 'REVIEW', and 'skip' to 'SKIP' (or keep original values).
+    const exportData = dataArr.map(row => {
+        let newRow = { ...row };
+        if (state.decCol && newRow[state.decCol] !== undefined) {
+            const decVal = String(newRow[state.decCol] || '').trim().toLowerCase();
+            if (decVal === 'ditch') {
+                newRow[state.decCol] = 'Y';
+            } else if (decVal === 'keep') {
+                newRow[state.decCol] = 'N';
+            } else if (decVal === 'review') {
+                newRow[state.decCol] = 'REVIEW';
+            } else if (decVal === 'skip') {
+                newRow[state.decCol] = 'SKIP';
+            }
+        }
+        return newRow;
+    });
+
     // Generate CSV
-    const csv = Papa.unparse(dataArr);
+    const csv = Papa.unparse(exportData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -12,6 +12,7 @@
     <!-- Bottom Navigation (PWA style) -->
     <nav class="tabs-nav" id="tabsNav" style="display: none;">
         <button class="tab-btn active" data-target="swiper-view">Review</button>
+        <button class="tab-btn" data-target="table-view">Data Table</button>
         <button class="tab-btn" data-target="settings-view">Settings & Stats</button>
     </nav>
 
@@ -28,6 +29,12 @@
                 <h3>Sort Wheel</h3>
                 <div class="form-group" style="margin-bottom: 0.5rem; flex-shrink: 0;">
                     <input type="text" id="wheel-search" placeholder="Search call numbers..." style="width: 100%; padding: 0.375rem 0.75rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem; flex-shrink: 0; display: flex; gap: 0.25rem;">
+                    <select id="wheel-filter-col" style="flex: 1; padding: 0.25rem; font-size: 0.75rem;">
+                        <option value="">Filter Column...</option>
+                    </select>
+                    <input type="text" id="wheel-filter-val" placeholder="Value match..." style="flex: 1; padding: 0.25rem; font-size: 0.75rem;">
                 </div>
                 <div class="wheel-scroll" id="call-number-wheel">
                     <!-- List of items to scroll & match position -->
@@ -59,6 +66,7 @@
                 <div class="empty-state" id="swiper-empty" style="display:none;">
                     <h3>All caught up!</h3>
                     <p>No rows match the current queue filter.</p>
+                    <button class="btn primary" onclick="openCSVWizard()" style="margin-top: 1rem;">Upload / Import New CSV</button>
                 </div>
             </div>
             <!-- Keyboard/Button Alternative -->
@@ -165,6 +173,9 @@
 
                 <div class="settings-card">
                     <h3>Data Handling</h3>
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <button class="btn primary" onclick="openCSVWizard()" style="width: 100%;">Upload / Import New CSV</button>
+                    </div>
                     <div class="form-group">
                         <label>Decision Column Name</label>
                         <input type="text" id="set-dec-col" value="D4Decision">
@@ -251,8 +262,13 @@
                 <button class="btn" id="wiz-btn-gen-id">Or Generate Auto-ID</button>
 
                 <div class="form-group mt-2">
-                    <label>Decision Column Name</label>
-                    <input type="text" id="wiz-dec-col" value="D4Decision">
+                    <label>Weeding Decision Column</label>
+                    <select id="wiz-dec-col-select"></select>
+                </div>
+
+                <div class="form-group mt-2" id="wiz-new-dec-col-container" style="display: none;">
+                    <label>New Decision Column Name</label>
+                    <input type="text" id="wiz-dec-col-input" value="D4Decision">
                 </div>
 
                 <button class="btn primary mt-2" id="wiz-btn-start">Start Triaging</button>
